@@ -25,9 +25,11 @@ object GetHdfsLogData {
     // 展示日志和点击日志已去重
     val unionLogRdd = getTodayLogData(sc)
     // 再将获取到的日志数据由json字符串转换成训练用的格式
-    transformDataFormat(unionLogRdd)
-
-
+    val logDataResult = transformDataFormat(unionLogRdd).cache()
+    // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
+    // 即可避免出现保存路径文件夹已存在的报错问题。
+    logDataResult.first()
+    logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion)
   }
 
   //    # 只获取当天的日志数据
@@ -128,7 +130,7 @@ object GetHdfsLogData {
 
   }
 
-  def transformDataFormat(inputLogRdd: RDD[String]): Unit ={
+  def transformDataFormat(inputLogRdd: RDD[String]): RDD[String] ={
 //    val test4 = inputLogRdd.first()
     inputLogRdd.map(line => {
       val sb: StringBuilder = new StringBuilder
@@ -186,8 +188,6 @@ object GetHdfsLogData {
       val e23: JSONObject = {if (log.containsKey("e23")) log.getJSONObject("e23") else log.getJSONObject("e24")}
       if (e23 == null){
         sb.append(",,,,,,,,,")
-//        println("==========")
-//        println(log)
       }else{
         if (e23.containsKey("e12"))
           sb.append(e23.getString("e12"))
@@ -251,8 +251,8 @@ object GetHdfsLogData {
         sb.append(e2.getString("e39"))
       sb.toString()
     })
-      .coalesce(2)
-      .saveAsTextFile(saveLogDataHdfsPromotion)
+//      .coalesce(2)
+//      .saveAsTextFile(saveLogDataHdfsPromotion)
   }
 
 
