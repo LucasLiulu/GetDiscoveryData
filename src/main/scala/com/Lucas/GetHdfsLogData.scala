@@ -1,5 +1,8 @@
 package com.Lucas
 
+/*
+* 只获取日志数据
+ */
 import com.Lucas.config._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
@@ -28,8 +31,13 @@ object GetHdfsLogData {
     val logDataResult = transformDataFormat(unionLogRdd).cache()
     // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
     // 即可避免出现保存路径文件夹已存在的报错问题。
-    logDataResult.first()
-    logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion)
+//    logDataResult.first()
+    logger.warn("logDataResult.first(): " )
+    logger.warn(logDataResult.first().toString)
+    val now = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+    logger.warn("now: " + now)
+    logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + now)
+//    logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion)
   }
 
   //    # 只获取当天的日志数据
@@ -45,7 +53,7 @@ object GetHdfsLogData {
       }catch {
         case _: Throwable => false
       }).map(line => {
-                var log = JSON.parseObject(line)
+                val log = JSON.parseObject(line)
                 val cid: String = {
                   if (log.containsKey("e23"))
                     log.getJSONObject("e23").getString("e15")
@@ -60,7 +68,7 @@ object GetHdfsLogData {
                 (cid + imei + logTimeDayLevel, line)
               }).reduceByKey((a, b) => a)     // 对同一时间同一用户发生的多条日志去重
                 .map(a => a._2)
-  .cache()
+//  .cache()
     val clickLogInputRdd = sc.textFile(clickDirsPath, 200)
 //    val clickLogInputRdd = sc.textFile(hdfsClickLogFilePath, 200)
       .filter(line => try{
@@ -83,7 +91,7 @@ object GetHdfsLogData {
               (cid + imei + logTimeDayLevel, line)
             }).reduceByKey((a, b) => a)     // 对同一时间同一用户发生的多条日志去重
               .map(a => a._2)
-  .cache()
+//  .cache()
 
     // 将展示日志和点击日志合并
     // 根据cid、uid、imei、时间、渠道确定同一条日志
@@ -195,8 +203,9 @@ object GetHdfsLogData {
         if (e23.containsKey("e14"))
           sb.append(e23.getString("e14"))
         sb.append(",")
-        if (e23.containsKey("e15"))
+        if (e23.containsKey("e15")){
           sb.append(e23.getString("e15"))
+        }
         sb.append(",")
         val o2: JSONObject = e23.getJSONObject("o2")
         if (o2.containsKey("e31"))
@@ -249,6 +258,12 @@ object GetHdfsLogData {
       sb.append(",")
       if (e2.containsKey("e39"))
         sb.append(e2.getString("e39"))
+
+//      val cid = e23.getString("e15")
+//      val contentInfo = if ("".equals(cid)) ", , , , , , , , , , , ,," else getContentInfo(cid)
+//      sb.append(",contentInfoBelow,")
+//      sb.append(contentInfo)
+
       sb.toString()
     })
 //      .coalesce(2)
