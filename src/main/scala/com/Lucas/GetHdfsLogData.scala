@@ -49,7 +49,11 @@ object GetHdfsLogData {
       logger.warn("logDataResult.first(): " )
       logger.warn(logDataResult.first().toString)
       logger.warn("now: " + date)
-      logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + date)
+      try{
+        logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + date)
+      }catch {
+        case _: Throwable => logger.error("fuck error!!!")
+      }
       i += 1
     }
   }
