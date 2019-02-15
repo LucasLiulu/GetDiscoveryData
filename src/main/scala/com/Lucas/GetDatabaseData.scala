@@ -53,12 +53,17 @@ object GetDatabaseData {
     val sc: SparkContext = new SparkContext(sparkConf)
     sc.setLogLevel("WARN")
     println("test")
-    val cidRdd: RDD[String] = sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
+    val cidRdd: RDD[String] = sc.textFile(saveLogDataHdfsPromotion + "*/part*", 20)
       .map(line => line.split(",")(24))
-    cidRdd.coalesce(1).saveAsTextFile(saveContentInfoHdfs + "cid")
     val contentInfo: RDD[String] = cidRdd.map(cid => getContentInfo(cid)).cache()
     logger.warn("contentInfo first: " + contentInfo.first().toString)
-    contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs)
+    try{
+//      contentInfo.coalesce(20)
+      contentInfo.saveAsTextFile(saveContentInfoHdfs)
+      logger.warn("save content info success!")
+    }catch {
+      case _: Throwable => logger.error("fuck error!!!")
+    }
     logger.warn("save content info finished!!!")
 //    // 将文章关键字转换成词向量，标题和文章主体关键字
 //    val cInfo = sc.textFile(saveContentInfoHdfs, 20)
@@ -133,7 +138,7 @@ object GetDatabaseData {
         }
         val rs = statement.executeQuery(sql)
 
-        if (rs.next()){
+        if (rs != null && rs.next()){
           val content_id = rs.getString("content_id")
           val body_images_count = rs.getString("body_images_count")
           val image_auditstate = rs.getString("image_auditstate")
@@ -292,7 +297,7 @@ object GetDatabaseData {
     try{
       val yearPart: String = cid.substring(0, 4)
       val monthParh: Int = Integer.parseInt(cid.substring(4, 6))
-      if ("2018" == yearPart && monthParh < 8)
+      if (("2018" == yearPart && monthParh < 8) || (!"2018".equals(yearPart) && !"2019".equals(yearPart)))
         ""
       else
         cid.substring(0, 4) + "_" + cid.substring(4, 6)

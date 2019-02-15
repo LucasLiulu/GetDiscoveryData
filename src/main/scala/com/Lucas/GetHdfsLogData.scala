@@ -12,6 +12,8 @@ import com.alibaba.fastjson.JSONObject
 import com.alibaba.fastjson.JSON
 import org.apache.spark.rdd.RDD
 
+import com.Lucas.GetDatabaseData.getContentInfo
+
 object GetHdfsLogData {
   val logger: Logger = Logger.getLogger(GetHdfsLogData.getClass)
 
@@ -43,12 +45,13 @@ object GetHdfsLogData {
       // 展示日志和点击日志已去重
       val unionLogRdd = getTodayLogData(sc, impressDirsPath, clickDirsPath)
       // 再将获取到的日志数据由json字符串转换成训练用的格式
-      val logDataResult = transformDataFormat(unionLogRdd).cache()
+      val logDataResult = transformDataFormat(unionLogRdd)
+        .cache()
       // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
       // 即可避免出现保存路径文件夹已存在的报错问题。
       logger.warn("logDataResult.first(): " )
       logger.warn(logDataResult.first().toString)
-      logger.warn("now: " + date)
+      logger.warn("date: " + date)
       try{
         logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + date)
       }catch {
@@ -56,7 +59,30 @@ object GetHdfsLogData {
       }
       i += 1
     }
+
+    // 从数据库获取以上出现过的文章的数据
+    val contentInfo: RDD[String] =
+      sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
+        .map(line => line.split(",")(24))
+        .map(cid => getContentInfo(cid))
+      .cache()
+    // 还是得用缓存! ! !
+    logger.warn("contentInfo first: " + contentInfo.first().toString)
+    val now: String = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+    logger.warn("save content info time: " + now)
+    try{
+      contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs + now)
+    }catch {
+      case _: Throwable => logger.error("save content info error!!!")
+    }
+    logger.warn("save content info finished!!!")
   }
+
+  // 从数据库查询日志中出现过的文章的数据
+  def getDatabaseContentData(sc: SparkContext): RDD[String] =
+    sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
+      .map(line => line.split(",")(24))
+      .map(cid => getContentInfo(cid))
 
   //    只获取当天的日志数据
   def getTodayLogData(sc: SparkContext, impressDirsPath: String, clickDirsPath: String): RDD[String] ={
