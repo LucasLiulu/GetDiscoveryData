@@ -6,7 +6,7 @@ package com.Lucas
 import com.Lucas.config._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
-import java.util.Date
+import java.util.{Calendar, Date}
 import java.text.SimpleDateFormat
 import com.alibaba.fastjson.JSONObject
 import com.alibaba.fastjson.JSON
@@ -24,30 +24,43 @@ object GetHdfsLogData {
     }
     val sc: SparkContext = new SparkContext(sparkConf)
     sc.setLogLevel("WARN")
-    // 只获取当天的日志数据，展示日志及每条日志是否点击
-    // 展示日志和点击日志已去重
-    val unionLogRdd = getTodayLogData(sc)
-    // 再将获取到的日志数据由json字符串转换成训练用的格式
-    val logDataResult = transformDataFormat(unionLogRdd).cache()
-    // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
-    // 即可避免出现保存路径文件夹已存在的报错问题。
-//    logDataResult.first()
-    logger.warn("logDataResult.first(): " )
-    logger.warn(logDataResult.first().toString)
-    val now = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
-    logger.warn("now: " + now)
-    logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + now)
-//    logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion)
+    // 从启动脚本传入需要获取多少天的日志数据
+    val howManyDaysLog: Int = if (args.length > 0) Integer.parseInt(args(0)) else 1
+    // 从哪天开始获取，默认是0，即从今天开始获取；如果是1则从昨天开始获取。
+    val fromWhichDay: Int = if (args.length > 1) Integer.parseInt(args(1)) else 0
+//    val impressDirsPathList: Array[String] = getDateHdfsDirsPathList(hdfsImpressionLogPath, howManyDaysLog, fromWhichDay)
+//    val clickDirsPathList = getDateHdfsDirsPathList(hdfsClickLogPath, howManyDaysLog, fromWhichDay)
+    var i: Int = 0
+    // 循环获取日志数据，并按日志的日期存储
+    while (i < howManyDaysLog){
+      // 确定获取哪天的日志
+      val pastDay: Int = i + fromWhichDay
+      val date: String = getDate(pastDay)
+      // 确定要获取的日志的路径
+      val impressDirsPath = getDateHdfsDirsPath(hdfsImpressionLogPath, date)
+      val clickDirsPath = getDateHdfsDirsPath(hdfsClickLogPath, date)
+      // 只获取当天的日志数据，展示日志及每条日志是否点击
+      // 展示日志和点击日志已去重
+      val unionLogRdd = getTodayLogData(sc, impressDirsPath, clickDirsPath)
+      // 再将获取到的日志数据由json字符串转换成训练用的格式
+      val logDataResult = transformDataFormat(unionLogRdd).cache()
+      // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
+      // 即可避免出现保存路径文件夹已存在的报错问题。
+      logger.warn("logDataResult.first(): " )
+      logger.warn(logDataResult.first().toString)
+      logger.warn("now: " + date)
+      logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + date)
+      i += 1
+    }
   }
 
-  //    # 只获取当天的日志数据
-  def getTodayLogData(sc: SparkContext): RDD[String] ={
-    val now = new SimpleDateFormat("yyyyMMdd").format(new Date())
-    val impressDirsPath = getDateHdfsDirsPath(hdfsImpressionLogPath, now)
-    val clickDirsPath = getDateHdfsDirsPath(hdfsClickLogPath, now)
+  //    只获取当天的日志数据
+  def getTodayLogData(sc: SparkContext, impressDirsPath: String, clickDirsPath: String): RDD[String] ={
+//    val now = new SimpleDateFormat("yyyyMMdd").format(new Date())
+//    val impressDirsPath = getDateHdfsDirsPath(hdfsImpressionLogPath, now)
+//    val clickDirsPath = getDateHdfsDirsPath(hdfsClickLogPath, now)
     // 只获取探索的日志
     val impressLogInputRdd = sc.textFile(impressDirsPath, 200)
-//    val impressLogInputRdd = sc.textFile(hdfsImpressionLogFilePath, 200)
       .filter(line => try{
         JSON.parseObject(line).getJSONObject("e23").getJSONObject("o2").getInteger("e30").equals(7)
       }catch {
@@ -68,9 +81,8 @@ object GetHdfsLogData {
                 (cid + imei + logTimeDayLevel, line)
               }).reduceByKey((a, b) => a)     // 对同一时间同一用户发生的多条日志去重
                 .map(a => a._2)
-//  .cache()
+
     val clickLogInputRdd = sc.textFile(clickDirsPath, 200)
-//    val clickLogInputRdd = sc.textFile(hdfsClickLogFilePath, 200)
       .filter(line => try{
         JSON.parseObject(line).getJSONObject("e24").getJSONObject("o2").getInteger("e30").equals(7)
       }catch {
@@ -91,7 +103,6 @@ object GetHdfsLogData {
               (cid + imei + logTimeDayLevel, line)
             }).reduceByKey((a, b) => a)     // 对同一时间同一用户发生的多条日志去重
               .map(a => a._2)
-//  .cache()
 
     // 将展示日志和点击日志合并
     // 根据cid、uid、imei、时间、渠道确定同一条日志
@@ -270,11 +281,28 @@ object GetHdfsLogData {
 //      .saveAsTextFile(saveLogDataHdfsPromotion)
   }
 
-
   // 根据输入的日期获取当天的日志
   def getDateHdfsDirsPath(hdfsLogPath: String, date: String): String ={
     hdfsLogPath + date + dirs
   }
 
+  // 从第fromWhichDay天开始获取，一共获取howManyDaysLog天的日志
+  // 返回这几天的日志的路径列表
+  def getDateHdfsDirsPathList(hdfsLogPath: String, howManyDaysLog: Int, fromWhichDay: Int): Array[String] ={
+    val arr: Array[String] = new Array[String](howManyDaysLog)
+    for (n <- fromWhichDay to howManyDaysLog + fromWhichDay){
+      arr.addString(new StringBuilder(hdfsLogPath + getDate(n) + dirs))
+    }
+    arr
+  }
+
+  // 获取前第n天的日期，n从0开始
+  def getDate(n: Int): String ={
+    val dt: Date = new Date()
+    val cal: Calendar = Calendar.getInstance()
+    cal.setTime(dt)
+    cal.add(Calendar.DATE, -n)
+    new SimpleDateFormat("yyyyMMdd").format(cal.getTime)
+  }
 
 }

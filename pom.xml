@@ -118,16 +118,22 @@
                 <groupId>org.nd4j</groupId>
                 <artifactId>nd4j-native-platform</artifactId>
                 <!--<artifactId>nd4j-native</artifactId>-->
-                <version>1.0.0-alpha</version>
-                <!--<version>${nd4j.version}</version>-->
-                <!--<classifier>linux-x86_64</classifier>-->
+                <version>${nd4j.version}</version>
+                <classifier>linux-x86_64</classifier>
             </dependency>
-
-            <!--<dependency>-->
-                <!--<groupId>org.nd4j</groupId>-->
-                <!--<artifactId>nd4j-cuda-7.5-platform</artifactId>-->
-                <!--<version>0.8.0</version>-->
-            <!--</dependency>-->
+            <!-- https://mvnrepository.com/artifact/org.nd4j/nd4j-native-platform -->
+            <dependency>
+                <groupId>org.nd4j</groupId>
+                <artifactId>nd4j-native-platform</artifactId>
+                <!--<artifactId>nd4j-native</artifactId>-->
+                <version>${nd4j.version}</version>
+                <classifier>linux-x86_64-openblas</classifier>
+            </dependency>
+            <dependency>
+                <groupId>org.nd4j</groupId>
+                <artifactId>nd4j-cuda-7.5-platform</artifactId>
+                <version>${nd4j.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -263,8 +269,20 @@
         <dependency>
             <groupId>org.nd4j</groupId>
             <artifactId>${nd4j.backend}</artifactId>
-            <version>1.0.0-alpha</version>
+            <version>${nd4j.version}</version>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/org.datavec/datavec-api -->
+        <!--<dependency>-->
+            <!--<groupId>org.datavec</groupId>-->
+            <!--<artifactId>datavec-api</artifactId>-->
+            <!--<version>${dl4j.version}</version>-->
+        <!--</dependency>-->
+
+        <!--<dependency>-->
+            <!--<groupId>org.nd4j</groupId>-->
+            <!--<artifactId>nd4j-jackson</artifactId>-->
+            <!--<version>${dl4j.version}</version>-->
+        <!--</dependency>-->
         <!-- https://mvnrepository.com/artifact/org.deeplearning4j/deeplearning4j-ui -->
         <dependency>
             <groupId>org.deeplearning4j</groupId>

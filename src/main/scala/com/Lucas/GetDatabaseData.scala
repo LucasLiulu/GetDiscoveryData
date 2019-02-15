@@ -19,7 +19,6 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer
 
 import com.Lucas.textCosineProcess.addVectorAndWeight
 
-import org.nd4j.linalg.exception.ND4JIllegalStateException
 object GetDatabaseData {
   val logger: Logger = Logger.getLogger(GetDatabaseData.getClass)
 
@@ -56,16 +55,16 @@ object GetDatabaseData {
     println("test")
     val cidRdd: RDD[String] = sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
       .map(line => line.split(",")(24))
-//    cidRdd.coalesce(1).saveAsTextFile(saveContentInfoHdfs + "cid")
-//    val contentInfo: RDD[String] = cidRdd.map(cid => getContentInfo(cid)).cache()
-//    logger.warn("contentInfo first: " + contentInfo.first().toString)
-//    contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs)
+    cidRdd.coalesce(1).saveAsTextFile(saveContentInfoHdfs + "cid")
+    val contentInfo: RDD[String] = cidRdd.map(cid => getContentInfo(cid)).cache()
+    logger.warn("contentInfo first: " + contentInfo.first().toString)
+    contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs)
+    logger.warn("save content info finished!!!")
 //    // 将文章关键字转换成词向量，标题和文章主体关键字
-//    logger.warn("save content info finished!!!")
-    val cInfo = sc.textFile(saveContentInfoHdfs, 20)
-    val wvt: RDD[String] = wordVec4Tags(cInfo, runType).cache()
-    logger.warn("wvt first: " + wvt.first().toString)
-    wvt.coalesce(10).saveAsTextFile(saveContentWordVecHdfs)
+//    val cInfo = sc.textFile(saveContentInfoHdfs, 20)
+//    val wvt: RDD[String] = wordVec4Tags(cInfo, runType).cache()
+//    logger.warn("wvt first: " + wvt.first().toString)
+//    wvt.coalesce(10).saveAsTextFile(saveContentWordVecHdfs)
   }
 
   // 获取词向量
