@@ -46,14 +46,15 @@ object GetHdfsLogData {
       val unionLogRdd = getTodayLogData(sc, impressDirsPath, clickDirsPath)
       // 再将获取到的日志数据由json字符串转换成训练用的格式
       val logDataResult = transformDataFormat(unionLogRdd)
-        .cache()
+      val saveResult = logDataResult.coalesce(20)
+//        .cache()
       // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
       // 即可避免出现保存路径文件夹已存在的报错问题。
-      logger.warn("logDataResult.first(): " )
-      logger.warn(logDataResult.first().toString)
+      logger.warn("saveResult.first(): " )
+//      logger.warn(saveResult.first().toString)
       logger.warn("date: " + date)
       try{
-        logDataResult.coalesce(20).saveAsTextFile(saveLogDataHdfsPromotion + date)
+        saveResult.saveAsTextFile(saveLogDataHdfsPromotion + date)
       }catch {
         case _: Throwable => logger.error("fuck error!!!")
       }
@@ -61,11 +62,12 @@ object GetHdfsLogData {
     }
 
     // 从数据库获取以上出现过的文章的数据
-    val contentInfo: RDD[String] =
-      sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
-        .map(line => line.split(",")(24))
-        .map(cid => getContentInfo(cid))
-      .cache()
+//    val contentInfo: RDD[String] =
+//      sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
+//        .map(line => line.split(",")(24))
+//        .map(cid => getContentInfo(cid))
+//      .cache()
+    /*
     // 还是得用缓存! ! !
     logger.warn("contentInfo first: " + contentInfo.first().toString)
     val now: String = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
@@ -76,6 +78,7 @@ object GetHdfsLogData {
       case _: Throwable => logger.error("save content info error!!!")
     }
     logger.warn("save content info finished!!!")
+    */
   }
 
   // 从数据库查询日志中出现过的文章的数据
@@ -250,24 +253,40 @@ object GetHdfsLogData {
         sb.append(",")
         val o2: JSONObject = e23.getJSONObject("o2")
         if (o2.containsKey("e31"))
-          sb.append(o2.getString("e31"))
+          try{
+            sb.append(o2.getString("e31"))
+          }catch {
+            case _: Throwable => None
+          }
         sb.append(",")
         if (o2.containsKey("e35"))
           sb.append(o2.getString("e35"))
         sb.append(",")
         if (o2.containsKey("e36"))
-          sb.append(o2.getString("e36"))
+          try{
+            sb.append(o2.getString("e36"))
+          }catch {
+            case _: Throwable => None
+          }
         sb.append(",")
         if (o2.containsKey("e37")){
-          val e37: JSONObject = o2.getJSONObject("e37")
-          if (e37.containsKey("l1"))
-            sb.append(e37.getString("l1"))
+          try{
+            val e37: JSONObject = o2.getJSONObject("e37")
+            if (e37.containsKey("l1"))
+              sb.append(e37.getString("l1"))
+          }catch {
+            case _: Throwable => None
+          }
         }
         sb.append(",")
         if (o2.containsKey("e37")){
-          val e37: JSONObject = o2.getJSONObject("e37")
-          if (e37.containsKey("l2"))
-            sb.append(e37.getString("l2"))
+          try{
+            val e37: JSONObject = o2.getJSONObject("e37")
+            if (e37.containsKey("l2"))
+              sb.append(e37.getString("l2"))
+          }catch {
+            case _: Throwable => None
+          }
         }
         sb.append(",")
         if (o2.containsKey("e38"))
