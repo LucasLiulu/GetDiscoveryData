@@ -8,14 +8,16 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 import java.util.{Calendar, Date}
 import java.text.SimpleDateFormat
+import org.apache.hadoop.conf.Configuration
 import com.alibaba.fastjson.JSONObject
 import com.alibaba.fastjson.JSON
 import org.apache.spark.rdd.RDD
-
 import com.Lucas.GetDatabaseData.getContentInfo
+import org.apache.hadoop.fs.{FileSystem, Path}
 
 object GetHdfsLogData {
   val logger: Logger = Logger.getLogger(GetHdfsLogData.getClass)
+  val conf: Configuration = new Configuration()
 
   def main(args: Array[String]): Unit = {
     val sparkConf: SparkConf = new SparkConf().setAppName("GetHdfsLogData")
@@ -352,6 +354,45 @@ object GetHdfsLogData {
     cal.setTime(dt)
     cal.add(Calendar.DATE, -n)
     new SimpleDateFormat("yyyyMMdd").format(cal.getTime)
+  }
+
+  def getPassedDayHdfsDirsPath(hdfsPathRequest: String, dayNum: Int, passedDay: Int): String ={
+    val path = StringBuilder.newBuilder
+    for (x <- 1 + passedDay to dayNum + passedDay){
+      val hdfsPath = hdfsPathRequest + getDate(x)
+      if (isHdfsDirectory(hdfsPath)){
+        path.append(hdfsPath + dirs)
+        if (x != dayNum + passedDay){
+          path.append(",")
+        }
+      }
+    }
+    logger.info("in getHdfsDirsPath, after scan hdfsPath. path: " + path)
+    if (path.length > 0 && path.substring(path.length -1).equals(",")){
+      path.deleteCharAt(path.length - 1)
+    }
+    logger.info("in getHdfsDirsPath, after delete last commit. path: " + path)
+    path.toString()
+  }
+
+  def isHdfsDirectory(dirPath: String): Boolean ={
+    try{
+      val fileSystem: FileSystem = FileSystem.get(conf)
+      val path: Path = new Path(dirPath)
+      fileSystem.isDirectory(path)
+    }catch {
+      case _: Throwable => false
+    }
+  }
+
+  def isHdfsFile(filePath: String): Boolean ={
+    try{
+      val fileSystem: FileSystem = FileSystem.get(conf)
+      val path: Path = new Path(filePath)
+      fileSystem.isFile(path)
+    }catch {
+      case _: Throwable => false
+    }
   }
 
 }

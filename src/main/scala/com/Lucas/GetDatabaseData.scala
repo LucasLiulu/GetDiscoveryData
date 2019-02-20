@@ -67,14 +67,19 @@ object GetDatabaseData {
     // 为了避免一次查询量过大，将查询任务分成5组执行
     val cidArr = cidSubtract.randomSplit(Array(0.2, 0.2, 0.2, 0.2, 0.2))
     val contentInfo0 = cidArr(0).map(cid => getContentInfo(cid)).cache()
+    contentInfo0.count()
     processSleep(2000)  // 暂停2s
     val contentInfo1 = cidArr(1).map(cid => getContentInfo(cid)).cache()
+    contentInfo1.count()
     processSleep(2000)
     val contentInfo2 = cidArr(2).map(cid => getContentInfo(cid)).cache()
+    contentInfo2.count()
     processSleep(2000)
     val contentInfo3 = cidArr(3).map(cid => getContentInfo(cid)).cache()
+    contentInfo3.count()
     processSleep(2000)
     val contentInfo4 = cidArr(4).map(cid => getContentInfo(cid)).cache()
+    contentInfo4.count()
     processSleep(2000)
     val contentInfo = contentInfo0.union(contentInfo1).union(contentInfo2)
       .union(contentInfo3).union(contentInfo4)
@@ -290,6 +295,7 @@ object GetDatabaseData {
     .replace("\":{\"weight\":", "=")
     .replace("},\"", " ")
     .replace("}}}", "")
+    .replace(" =", "=")
 
   def getSql(cid: String): String ={
     val date: String = getStringDate(cid)
