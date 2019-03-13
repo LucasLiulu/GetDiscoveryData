@@ -81,6 +81,7 @@
             <!--</execution>-->
             <!--</executions>-->
             <!--</plugin>-->
+            <!-- 拷贝依赖的jar包到lib目录结束 -->
 
             <plugin>
                 <groupId>org.scala-tools</groupId>

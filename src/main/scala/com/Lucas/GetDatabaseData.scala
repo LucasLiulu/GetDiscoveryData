@@ -14,6 +14,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import java.net.URI
 import java.io.{File, InputStream}
 
+import com.Lucas.aliUserNum.getPassedDayHdfsDirsPath
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors
@@ -55,15 +56,24 @@ object GetDatabaseData {
     sc.setLogLevel("WARN")
     println("test")
     // 读取已查询到的资讯数据
-    val contentOldInfo: RDD[String] = sc.textFile(saveContentInfoHdfs + "20190215/*.csv", 20)
+    val contentOldInfo: RDD[String] = sc.textFile(saveContentInfoHdfs + "201902161802/*", 20)
     val cidOldRdd: RDD[String] = contentOldInfo.map(line => line.split(",")(0))
-    val cid: RDD[String] = sc.textFile(saveLogDataHdfsPromotion + "*/part*", 20)
+    // 共获取了几天的日志数据
+    val howManyDays: Int = if (args.size > 0) Integer.parseInt(args(0)) else 1
+    // 从哪天开始获取
+    val fromWhichDay: Int = if (args.size > 1) Integer.parseInt(args(1)) else 0
+    val impressingDirPath = getPassedDayHdfsDirsPath(saveLogDataHdfsPromotion, howManyDays, fromWhichDay, "/*")
+    val cid: RDD[String] = sc.textFile(impressingDirPath, 20)
       .map(line => (line.split(",")(24), line))
       .reduceByKey((a, b) => a)
       .map(g => g._2)
       .map(line => line.split(",")(24))
     // 得到新的日志文件的cid和老资讯数据中的cid的差集，只保留新的cid
     val cidSubtract = cid.subtract(cidOldRdd)
+    // 直接将所有文章都load下来
+    var contentInfo = getDBContentInfo5000(sc, cidSubtract)
+
+    /*
     // 为了避免一次查询量过大，将查询任务分成5组执行
     val cidArr = cidSubtract.randomSplit(Array(0.2, 0.2, 0.2, 0.2, 0.2))
     val contentInfo0 = cidArr(0).map(cid => getContentInfo(cid)).cache()
@@ -83,6 +93,7 @@ object GetDatabaseData {
     processSleep(2000)
     val contentInfo = contentInfo0.union(contentInfo1).union(contentInfo2)
       .union(contentInfo3).union(contentInfo4)
+  */
     // 再将当前查询到的资讯数据与原有的资讯数据合并
       //由于查询数据库时只查了仅存在于新资讯中的资讯数据，因此需要找到原有资讯和当前日志中的资讯的交集
 // 最后与当前从数据库中查询到的资讯数据进行合并
@@ -111,6 +122,30 @@ object GetDatabaseData {
 //    val wvt: RDD[String] = wordVec4Tags(cInfo, runType).cache()
 //    logger.warn("wvt first: " + wvt.first().toString)
 //    wvt.coalesce(10).saveAsTextFile(saveContentWordVecHdfs)
+  }
+
+  // 每次查询5000条
+  def getDBContentInfo5000(sc: SparkContext, cidRdd: RDD[String]): RDD[String] ={
+    var newCidArray = cidRdd.collect().toList
+    val takeEleNum: Int = 5000
+    var idArr5000 = newCidArray.take(takeEleNum)
+    var contentInfo: RDD[String] = sc.parallelize(idArr5000).map(cid => getContentInfo(cid)).cache()
+    // 睡眠2s
+    processSleep(2000)
+    contentInfo.count()
+    newCidArray = newCidArray.drop(takeEleNum)
+    while (!newCidArray.isEmpty){
+      idArr5000 = if (newCidArray.length>=takeEleNum) newCidArray.take(takeEleNum) else newCidArray
+      // 执行查询数据库的操作
+      val tmpContentInfo = sc.parallelize(idArr5000).map(cid => getContentInfo(cid)).cache()
+      tmpContentInfo.count()
+      contentInfo = contentInfo.union(tmpContentInfo)
+      newCidArray = if (newCidArray.length>=takeEleNum) newCidArray.drop(takeEleNum) else newCidArray.drop(newCidArray.length)
+      processSleep(1000)
+    }
+    val now = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+//    contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs + now)
+    contentInfo
   }
 
   // 第二种方法还有点问题

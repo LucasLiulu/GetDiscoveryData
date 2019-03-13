@@ -356,12 +356,12 @@ object GetHdfsLogData {
     new SimpleDateFormat("yyyyMMdd").format(cal.getTime)
   }
 
-  def getPassedDayHdfsDirsPath(hdfsPathRequest: String, dayNum: Int, passedDay: Int): String ={
+  def getPassedDayHdfsDirsPath(hdfsPathRequest: String, dayNum: Int, passedDay: Int, dirsString: String=dirs): String ={
     val path = StringBuilder.newBuilder
     for (x <- 1 + passedDay to dayNum + passedDay){
       val hdfsPath = hdfsPathRequest + getDate(x)
       if (isHdfsDirectory(hdfsPath)){
-        path.append(hdfsPath + dirs)
+        path.append(hdfsPath + dirsString)
         if (x != dayNum + passedDay){
           path.append(",")
         }
