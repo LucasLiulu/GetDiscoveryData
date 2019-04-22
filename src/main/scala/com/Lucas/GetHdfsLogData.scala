@@ -6,8 +6,10 @@ package com.Lucas
 import com.Lucas.config._
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
-import java.util.{Calendar, Date}
+import java.util.{Calendar, Date, ArrayList}
 import java.text.SimpleDateFormat
+import com.Lucas.GetDatabaseData.getDBMainLogical
+
 import org.apache.hadoop.conf.Configuration
 import com.alibaba.fastjson.JSONObject
 import com.alibaba.fastjson.JSON
@@ -35,6 +37,7 @@ object GetHdfsLogData {
 //    val impressDirsPathList: Array[String] = getDateHdfsDirsPathList(hdfsImpressionLogPath, howManyDaysLog, fromWhichDay)
 //    val clickDirsPathList = getDateHdfsDirsPathList(hdfsClickLogPath, howManyDaysLog, fromWhichDay)
     var i: Int = 0
+    val savePathList: StringBuilder = new StringBuilder()
     // 循环获取日志数据，并按日志的日期存储
     while (i < howManyDaysLog){
       // 确定获取哪天的日志
@@ -48,44 +51,29 @@ object GetHdfsLogData {
       val unionLogRdd = getTodayLogData(sc, impressDirsPath, clickDirsPath)
       // 再将获取到的日志数据由json字符串转换成训练用的格式
       val logDataResult = transformDataFormat(unionLogRdd)
-      val saveResult = logDataResult.coalesce(20)
+      val saveResult = logDataResult.coalesce(500)
 //        .cache()
       // 在保存数据前，先对保存的数据设置缓存cache，然后执行一次行动操作，然后再保存
       // 即可避免出现保存路径文件夹已存在的报错问题。
-      logger.warn("saveResult.first(): " )
+//      logger.warn("saveResult.first(): " )
 //      logger.warn(saveResult.first().toString)
       logger.warn("date: " + date)
-      try{
-        saveResult.saveAsTextFile(saveLogDataHdfsPromotion + date)
-      }catch {
-        case _: Throwable => logger.error("fuck error!!!")
+      val savePath: String = saveLogDataHdfsPrefix + getDate(pastDay, true) + "/onlyLogData/" + date
+      saveResult.saveAsTextFile(savePath)
+      if (i!=0){
+        savePathList.append(",")
       }
+      savePathList.append(savePath + "/*")
       i += 1
     }
+    logger.warn("savePathList toString: " + savePathList.toString())
+    getDBMainLogical(sc: SparkContext, onlyLogPath=savePathList.toString())
 
-    // 从数据库获取以上出现过的文章的数据
-//    val contentInfo: RDD[String] =
-//      sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
-//        .map(line => line.split(",")(24))
-//        .map(cid => getContentInfo(cid))
-//      .cache()
-    /*
-    // 还是得用缓存! ! !
-    logger.warn("contentInfo first: " + contentInfo.first().toString)
-    val now: String = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
-    logger.warn("save content info time: " + now)
-    try{
-      contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs + now)
-    }catch {
-      case _: Throwable => logger.error("save content info error!!!")
-    }
-    logger.warn("save content info finished!!!")
-    */
   }
 
   // 从数据库查询日志中出现过的文章的数据
   def getDatabaseContentData(sc: SparkContext): RDD[String] =
-    sc.textFile(saveLogDataHdfsPromotion + "*/part*", 200)
+    sc.textFile(saveLogDataHdfsPromotion + "*/part*", 1024)
       .map(line => line.split(",")(24))
       .map(cid => getContentInfo(cid))
 
@@ -95,19 +83,14 @@ object GetHdfsLogData {
 //    val impressDirsPath = getDateHdfsDirsPath(hdfsImpressionLogPath, now)
 //    val clickDirsPath = getDateHdfsDirsPath(hdfsClickLogPath, now)
     // 只获取探索的日志
-    val impressLogInputRdd = sc.textFile(impressDirsPath, 200)
+    val impressLogInputRdd = sc.textFile(impressDirsPath, 1024)
       .filter(line => try{
-        JSON.parseObject(line).getJSONObject("e23").getJSONObject("o2").getInteger("e30").equals(7)
+        line.contains("e23") && JSON.parseObject(line).getJSONObject("e23").getJSONObject("o2").getInteger("e30").equals(GMP_STRATEGY_NUM)
       }catch {
         case _: Throwable => false
       }).map(line => {
                 val log = JSON.parseObject(line)
-                val cid: String = {
-                  if (log.containsKey("e23"))
-                    log.getJSONObject("e23").getString("e15")
-                  else
-                    log.getJSONObject("e24").getString("e15")
-                }
+                val cid: String = log.getJSONObject("e23").getString("e15")
                 //        val uid: String = log.getString("p7")
                 val promotion: String = log.getString("p6")
                 val imei: String = log.getString("p17")
@@ -117,19 +100,14 @@ object GetHdfsLogData {
               }).reduceByKey((a, b) => a)     // 对同一时间同一用户发生的多条日志去重
                 .map(a => a._2)
 
-    val clickLogInputRdd = sc.textFile(clickDirsPath, 200)
+    val clickLogInputRdd = sc.textFile(clickDirsPath, 1024)
       .filter(line => try{
-        JSON.parseObject(line).getJSONObject("e24").getJSONObject("o2").getInteger("e30").equals(7)
+        line.contains("e24") && JSON.parseObject(line).getJSONObject("e24").getJSONObject("o2").getInteger("e30").equals(GMP_STRATEGY_NUM)
       }catch {
         case _: Throwable => false
       }).map(line => {
               var log = JSON.parseObject(line)
-              val cid: String = {
-                if (log.containsKey("e23"))
-                  log.getJSONObject("e23").getString("e15")
-                else
-                  log.getJSONObject("e24").getString("e15")
-              }
+              val cid: String = log.getJSONObject("e24").getString("e15")
               //        val uid: String = log.getString("p7")
               val promotion: String = log.getString("p6")
               val imei: String = log.getString("p17")
@@ -158,7 +136,8 @@ object GetHdfsLogData {
           val logTimeDayLevel: String = logTime.trim().split(" ")(0)
           (cid + imei + logTimeDayLevel, log)     // 由于展示日志和点击日志都已经去重了，因此不会出现同一种日志出现两次的现象
         }
-      ).groupByKey()     // 把拥有相同key值的log聚到一起
+      )
+      .groupByKey()     // 把拥有相同key值的log聚到一起
       .map(x => {
         val JO: JSONObject = new JSONObject()
         if (x._2.size == 1){
@@ -347,13 +326,16 @@ object GetHdfsLogData {
     arr
   }
 
-  // 获取前第n天的日期，n从0开始
-  def getDate(n: Int): String ={
+  // 获取前第n天的日期，n从0开始；如果只要求返回年月，则month为true
+  def getDate(n: Int, month: Boolean=false): String ={
     val dt: Date = new Date()
     val cal: Calendar = Calendar.getInstance()
     cal.setTime(dt)
     cal.add(Calendar.DATE, -n)
-    new SimpleDateFormat("yyyyMMdd").format(cal.getTime)
+    if (month)
+      new SimpleDateFormat("yyyyMM").format(cal.getTime)
+    else
+      new SimpleDateFormat("yyyyMMdd").format(cal.getTime)
   }
 
   def getPassedDayHdfsDirsPath(hdfsPathRequest: String, dayNum: Int, passedDay: Int, dirsString: String=dirs): String ={

@@ -13,7 +13,9 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import java.net.URI
 import java.io.{File, InputStream}
+import java.util
 
+import com.Lucas.GetHdfsLogData.getDate
 import com.Lucas.aliUserNum.getPassedDayHdfsDirsPath
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -23,12 +25,12 @@ import com.Lucas.textCosineProcess.addVectorAndWeight
 
 object GetDatabaseData {
   val logger: Logger = Logger.getLogger(GetDatabaseData.getClass)
-
-  var connection: Connection = null
-  var cacheMap: Map[String, String] = null
-
-  var tagsCacheMap: Map[String, String] = null
-  var tagsTitleCacheMap: Map[String, String] = null
+//
+//  var connection: Connection = null
+//  var cacheMap: Map[String, String] = null
+//
+//  var tagsCacheMap: Map[String, String] = null
+//  var tagsTitleCacheMap: Map[String, String] = null
 
   /**
     * body_images_count
@@ -43,34 +45,51 @@ object GetDatabaseData {
     * ero_cal_result
     * group_id
     */
-  val EXTRA = ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", "
+//  val EXTRA = ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", " + ", "
 
   def main(args: Array[String]): Unit = {
     val sparkConf: SparkConf = new SparkConf().setAppName("GetDatabaseData")
     var runType = "spark"
-    if (args.length == 0){
+    if (args.length == 0) {
       runType = "local"
       sparkConf.setMaster("local")
     }
     val sc: SparkContext = new SparkContext(sparkConf)
     sc.setLogLevel("WARN")
     println("test")
-    // 读取已查询到的资讯数据
-    val contentOldInfo: RDD[String] = sc.textFile(saveContentInfoHdfs + "201902161802/*", 20)
-    val cidOldRdd: RDD[String] = contentOldInfo.map(line => line.split(",")(0))
     // 共获取了几天的日志数据
     val howManyDays: Int = if (args.size > 0) Integer.parseInt(args(0)) else 1
     // 从哪天开始获取
     val fromWhichDay: Int = if (args.size > 1) Integer.parseInt(args(1)) else 0
-    val impressingDirPath = getPassedDayHdfsDirsPath(saveLogDataHdfsPromotion, howManyDays, fromWhichDay, "/*")
-    val cid: RDD[String] = sc.textFile(impressingDirPath, 20)
-      .map(line => (line.split(",")(24), line))
+    // 获取需要拉取的日志的保存路径
+    val onlyLogSavePath: String = saveLogDataHdfsPrefix + getDate(fromWhichDay, true) + "/onlyLogData/"
+    logger.warn("onlyLogSavePath: " + onlyLogSavePath)
+    val onlyLogDirPath: String = getPassedDayHdfsDirsPath(onlyLogSavePath, howManyDays, fromWhichDay, "/*")
+    logger.warn("onlyLogDirPath: " + onlyLogDirPath)
+    val onlyLogRdd = sc.textFile(onlyLogDirPath, 2048)
+    getDBMainLogical(sc, howManyDays=howManyDays, fromWhichDay=fromWhichDay, onlyLogRdd=onlyLogRdd)
+  }
+
+
+  def getDBMainLogical(sc: SparkContext, howManyDays: Int=1, fromWhichDay: Int=0, onlyLogRdd: RDD[String]=null, onlyLogPath: String=null): Unit = {
+    // 读取已查询到的资讯数据
+    val contentOldInfo: RDD[String] = sc.textFile(saveLogDataHdfsPrefix + "20190*/contentInfo/20190*/", 1024)
+    val cidOldRdd: RDD[String] = contentOldInfo.map(line => line.split(",")(0))
+    val logRdd = if (onlyLogRdd!=null){
+      onlyLogRdd
+    }else{
+      sc.textFile(onlyLogPath, 1024)
+    }
+    val cid: RDD[String] =
+      logRdd.map(line => (line.split(",")(24), line))
       .reduceByKey((a, b) => a)
       .map(g => g._2)
       .map(line => line.split(",")(24))
     // 得到新的日志文件的cid和老资讯数据中的cid的差集，只保留新的cid
     val cidSubtract = cid.subtract(cidOldRdd)
-    // 直接将所有文章都load下来
+    logger.warn("total content num: " + cid.count())
+    logger.warn("new content num: " + cidSubtract.count())
+    // 直接将所有新文章都load下来
     var contentInfo = getDBContentInfo5000(sc, cidSubtract)
 
     /*
@@ -97,28 +116,30 @@ object GetDatabaseData {
     // 再将当前查询到的资讯数据与原有的资讯数据合并
       //由于查询数据库时只查了仅存在于新资讯中的资讯数据，因此需要找到原有资讯和当前日志中的资讯的交集
 // 最后与当前从数据库中查询到的资讯数据进行合并
-    val contentInfoIntersection = cid.intersection(cidOldRdd)  // 得到交集
-      .union(contentOldInfo)
-      .groupBy(line => line.split(",")(0))
-      .filter(a => a._2.size == 2)
-      .map(a => {
-        val arrTmp = a._2.toList
-        if (arrTmp(0).size > 23) arrTmp(0) else if (arrTmp(1).size>23) arrTmp(1) else ""
-      }).filter(a => !"".equals(a))
+//    val contentInfoIntersection = cid.intersection(cidOldRdd)  // 得到交集
+//      .union(contentOldInfo)
+//      .groupBy(line => line.split(",")(0))
+//      .filter(a => a._2.size == 2)
+//      .map(a => {
+//        val arrTmp = a._2.toList
+//        if (arrTmp(0).size > 23) arrTmp(0) else if (arrTmp(1).size>23) arrTmp(1) else ""
+//      }).filter(a => !"".equals(a))
     // 将当前日志数据中的content ID对应的资讯数据和交集部分的资讯数据合并
-    val contentInfoResult = contentInfo.union(contentInfoIntersection)
+//    val contentInfoResult = contentInfo.union(contentInfoIntersection)
+    // 由于同时出现在原有资讯集和新资讯集中的资讯所有字段都完全相同，因此直接union再去重即可
+    val contentInfoResult = contentInfo.union(contentOldInfo).distinct()
     val now: String = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+    val month: String = new SimpleDateFormat("yyyyMM").format(new Date())
     logger.warn("now: " + now)
-    try{
-      val contentResult = contentInfoResult.coalesce(20).cache()
-      contentResult.saveAsTextFile(saveContentInfoHdfs + now)
-      logger.warn("save content info success!")
-    }catch {
-      case _: Throwable => logger.error("fuck error!!!")
-    }
+    val contentResult = contentInfoResult.coalesce(20).cache()
+    val savePath: String = saveLogDataHdfsPrefix + month + "/contentInfo/" + now
+    logger.warn("GetDatabaseData content info save path: " + savePath)
+    contentResult.saveAsTextFile(savePath)
+//      contentResult.saveAsTextFile(saveContentInfoHdfs + now)
+    logger.warn("save content info success!")
     logger.warn("save content info finished!!!")
 //    // 将文章关键字转换成词向量，标题和文章主体关键字
-//    val cInfo = sc.textFile(saveContentInfoHdfs, 20)
+//    val cInfo = sc.textFile(saveContentInfoHdfs, 1024)
 //    val wvt: RDD[String] = wordVec4Tags(cInfo, runType).cache()
 //    logger.warn("wvt first: " + wvt.first().toString)
 //    wvt.coalesce(10).saveAsTextFile(saveContentWordVecHdfs)
@@ -132,7 +153,7 @@ object GetDatabaseData {
     var contentInfo: RDD[String] = sc.parallelize(idArr5000).map(cid => getContentInfo(cid)).cache()
     // 睡眠2s
     processSleep(2000)
-    contentInfo.count()
+    logger.warn("get content info from database num: " + contentInfo.count())
     newCidArray = newCidArray.drop(takeEleNum)
     while (!newCidArray.isEmpty){
       idArr5000 = if (newCidArray.length>=takeEleNum) newCidArray.take(takeEleNum) else newCidArray
@@ -141,9 +162,9 @@ object GetDatabaseData {
       tmpContentInfo.count()
       contentInfo = contentInfo.union(tmpContentInfo)
       newCidArray = if (newCidArray.length>=takeEleNum) newCidArray.drop(takeEleNum) else newCidArray.drop(newCidArray.length)
-      processSleep(1000)
+      processSleep(2000)
     }
-    val now = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
+//    val now = new SimpleDateFormat("yyyyMMddHHmm").format(new Date())
 //    contentInfo.coalesce(20).saveAsTextFile(saveContentInfoHdfs + now)
     contentInfo
   }
@@ -214,7 +235,7 @@ object GetDatabaseData {
     }
     if ("".equals(value) || value == null){
       val sql: String = getSql(cid)
-      logger.info("sql: " + sql)
+      logger.warn("sql: " + sql)
 
       if (!"".equals(sql)){
         if(connection==null){
@@ -246,26 +267,31 @@ object GetDatabaseData {
           val local = rs.getString("local")
           var theLocal = " , , "
           val jsonObj: JSONObject = JSON.parseObject(local)
-          if (jsonObj != null && jsonObj.containsKey("v1")){
-            val jarr = jsonObj.getJSONArray("v1")
-            if (jarr != null && jarr.size() > 0){
-              val item = jarr.getJSONObject(0)
-              if (item != null){
-                var country = item.getString("country")
-                if (country == null){
-                  country = " "
+          try{
+            if (jsonObj != null && jsonObj.containsKey("v1")){
+              val jarr = jsonObj.getJSONArray("v1")
+              if (jarr != null && jarr.size() > 0){
+                val item = jarr.getJSONObject(0)
+                if (item != null){
+                  var country = item.getString("country")
+                  if (country == null){
+                    country = " "
+                  }
+                  var city = item.getString("city")
+                  if (city == null){
+                    city = " "
+                  }
+                  var state = item.getString("state")
+                  if (state == null){
+                    state = " "
+                  }
+                  theLocal = country + "," + city + "," + state
                 }
-                var city = item.getString("city")
-                if (city == null){
-                  city = " "
-                }
-                var state = item.getString("state")
-                if (state == null){
-                  state = " "
-                }
-                theLocal = country + "," + city + "," + state
               }
             }
+
+          }catch {
+            case ex: Throwable => ""
           }
           var ero_cal_result = " "
           if (sql.contains("ero_cal_result")){
@@ -313,9 +339,15 @@ object GetDatabaseData {
       }
       if ("".equals(tags) || tags == null){
         tags = formateTags(tagsStr, "{\"v8\":{\"")
+        if (tags.contains("{\"v99\":{\"")){
+          tags = tags.replace("{\"v99\":{\"", "")
+        }
         tagsCacheMap += (cid -> tags)
       }
       if (null != tagsTitleCacheMap && tagsTitleCacheMap.contains(cid)){
+        if (tagsTitle.contains("} v4\":{\"")){
+          tagsTitle = tagsTitle.replace("} v4\":{\"", " ")
+        }
         tagsTitle = tagsTitleCacheMap(cid)
       }
       if ("".equals(tagsTitle) || null == tagsTitle){
@@ -393,7 +425,7 @@ object GetDatabaseData {
     try{
       val yearPart: String = cid.substring(0, 4)
       val monthParh: Int = Integer.parseInt(cid.substring(4, 6))
-      if (("2018" == yearPart && monthParh < 8) || (!"2018".equals(yearPart) && !"2019".equals(yearPart)))
+      if (("2018" == yearPart && monthParh < 8) || (!"2018".equals(yearPart) && !"2019".equals(yearPart)) || monthParh > 12)
         ""
       else
         cid.substring(0, 4) + "_" + cid.substring(4, 6)
